@@ -6,10 +6,10 @@ interface Props {
   visitorSlug: string | null
   mood: Mood | null
   visitorPrompt: string | null
+  guessGameOn: boolean
 }
 
-export default function Hero({ isVisitor, visitorSlug, mood, visitorPrompt }: Props) {
-  // determine quote/sub/icon to display
+export default function Hero({ isVisitor, visitorSlug, mood, visitorPrompt, guessGameOn }: Props) {
   let icon = '·'
   let quote = 'Choose a mood. The room will adjust.'
   let sub = 'A small experiment in atmosphere — type, color, motion, and sound bend to how you feel right now.'
@@ -17,8 +17,14 @@ export default function Hero({ isVisitor, visitorSlug, mood, visitorPrompt }: Pr
 
   if (isVisitor) {
     eyebrow = `replying to · @${visitorSlug ?? ''}`
-    quote = visitorPrompt || 'How do you feel today?'
-    sub = 'Pick a feeling. Optional words. Stays anonymous.'
+    if (guessGameOn) {
+      eyebrow = 'guess my mood'
+      quote = "They've picked a secret mood. Can you read them?"
+      sub = 'Pick the one you think they chose. Right or wrong, your mood still gets sent.'
+    } else {
+      quote = visitorPrompt || 'How do you feel today?'
+      sub = 'Pick a feeling. Optional words. Stays anonymous.'
+    }
     if (mood) icon = mood.emoji
   } else if (mood) {
     icon = mood.emoji
@@ -30,12 +36,7 @@ export default function Hero({ isVisitor, visitorSlug, mood, visitorPrompt }: Pr
     <>
       <div
         className="font-inter uppercase mb-5 inline-flex items-center gap-3.5"
-        style={{
-          fontSize: 11,
-          fontWeight: 500,
-          letterSpacing: '0.32em',
-          color: 'var(--fg-muted)',
-        }}
+        style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.32em', color: 'var(--fg-muted)' }}
       >
         <span className="block h-px w-7 opacity-60" style={{ background: 'var(--fg-muted)' }} />
         {eyebrow}
@@ -46,11 +47,7 @@ export default function Hero({ isVisitor, visitorSlug, mood, visitorPrompt }: Pr
         <motion.div
           key={icon}
           className="mb-5 flex items-center justify-center select-none"
-          style={{
-            fontSize: 'clamp(40px, 5vw, 56px)',
-            height: 64,
-            filter: 'drop-shadow(0 6px 24px rgba(0,0,0,0.35))',
-          }}
+          style={{ fontSize: 'clamp(40px, 5vw, 56px)', height: 64, filter: 'drop-shadow(0 6px 24px rgba(0,0,0,0.35))' }}
           initial={{ scale: 0.5, opacity: 0, rotate: -12 }}
           animate={{ scale: 1, opacity: 1, rotate: 0 }}
           exit={{ scale: 0.6, opacity: 0, rotate: 8 }}

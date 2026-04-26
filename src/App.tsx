@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { MOODS, MOOD_KEYS, type MoodKey } from './lib/moods'
 import { ensureOwner, storage, type Owner, type FeedEntry } from './lib/store'
+import { challengeForDate, todayKey } from './lib/challenges'
+import { funnyResponse } from './lib/funny'
+import { ACHIEVEMENTS, unlockedIds } from './lib/achievements'
+import { activeDaysFromFeed } from './lib/store'
 import { useAudio } from './hooks/useAudio'
 import { useToast } from './hooks/useToast'
 
@@ -16,33 +20,57 @@ import Meta from './components/Meta'
 import MoodDrawer from './components/MoodDrawer'
 import Toast from './components/Toast'
 import VisitorBanner from './components/VisitorBanner'
+import ChallengeBanner from './components/ChallengeBanner'
+import AchievementToast from './components/AchievementToast'
+import RandomDrop from './components/RandomDrop'
+import GuessReveal from './components/GuessReveal'
+
+const CHALLENGE_DISMISS_KEY = 'moodful.challenge.dismissed'
 
 export default function App() {
-  // ---- routing ----
-  const visitSlug = useMemo(() => {
-    return new URLSearchParams(window.location.search).get('m')
-  }, [])
+  /* ---- routing ---- */
+  const visitSlug = useMemo(
+    () => new URLSearchParams(window.location.search).get('m'),
+    [],
+  )
   const isVisitor = !!visitSlug
 
-  // ---- state ----
+  /* ---- state ---- */
   const [owner, setOwner] = useState<Owner>(() => ensureOwner())
   const [activeMood, setActiveMood] = useState<MoodKey | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [sent, setSent] = useState(false)
+  const [funnyLine, setFunnyLine] = useState<string | null>(null)
+  const [challengeDismissedKey, setChallengeDismissedKey] = useState<string>(() => localStorage.getItem(CHALLENGE_DISMISS_KEY) ?? '')
+  const [pendingGuess, setPendingGuess] = useState<{ guess: MoodKey; actual: MoodKey } | null>(null)
+  const [unlockedToast, setUnlockedToast] = useState<typeof ACHIEVEMENTS[number] | null>(null)
+  const previousUnlocksRef = useRef<Set<string>>(new Set(owner.unlocks ?? []))
   const { message: toastMessage, show: showToast } = useToast()
 
   const currentMood = activeMood ? MOODS[activeMood] : null
   const { audioOn, toggle: toggleAudio } = useAudio(currentMood?.audio ?? null)
 
-  // ---- visitor prompt (read owner's prompt if same device) ----
-  const visitorPrompt = useMemo(() => {
-    if (!isVisitor) return null
+  /* ---- visitor: read owner's prompt + guess-game flag from same-device store ---- */
+  const visitorContext = useMemo(() => {
+    if (!isVisitor) return { prompt: null, guessGameOn: false, hiddenMood: null as MoodKey | null }
     const o = storage.loadOwner()
-    if (o && o.slug === visitSlug && o.prompt) return o.prompt
-    return 'How do you feel today?'
+    if (o && o.slug === visitSlug) {
+      return { prompt: o.prompt, guessGameOn: !!o.hiddenMood, hiddenMood: o.hiddenMood ?? null }
+    }
+    return { prompt: 'How do you feel today?', guessGameOn: false, hiddenMood: null }
   }, [isVisitor, visitSlug])
 
-  // ---- apply theme ----
+  /* ---- daily challenge ---- */
+  const todaysChallenge = useMemo(() => challengeForDate(), [])
+  const today = todayKey()
+  const challengeVisible = challengeDismissedKey !== today
+
+  const dismissChallenge = () => {
+    localStorage.setItem(CHALLENGE_DISMISS_KEY, today)
+    setChallengeDismissedKey(today)
+  }
+
+  /* ---- apply theme ---- */
   useEffect(() => {
     const root = document.documentElement
     if (currentMood) {
@@ -59,12 +87,11 @@ export default function App() {
     }
   }, [currentMood])
 
-  // ---- visitor mode body class ----
   useEffect(() => {
     document.body.classList.toggle('is-visitor', isVisitor)
   }, [isVisitor])
 
-  // ---- keyboard ----
+  /* ---- keyboard shortcuts ---- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
@@ -81,7 +108,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [toggleAudio])
 
-  // ---- click ripple ----
+  /* ---- click ripple ---- */
   const handleMoodSelect = useCallback((key: MoodKey, e: React.MouseEvent) => {
     setActiveMood(key)
     const ring = document.createElement('div')
@@ -90,35 +117,108 @@ export default function App() {
     window.setTimeout(() => ring.remove(), 1100)
   }, [])
 
-  // ---- visitor submit ----
+  /* ---- random mood drop (visitor) ---- */
+  const handleRandomDrop = useCallback(() => {
+    const k = MOOD_KEYS[Math.floor(Math.random() * MOOD_KEYS.length)]
+    setActiveMood(k)
+    showToast(`🎲 random: ${MOODS[k].label.toLowerCase()}`)
+  }, [showToast])
+
+  /* ---- visitor submit ---- */
   const submitMood = useCallback(
     (msg: string) => {
       if (!activeMood || !visitSlug) return
+      const isGuessGame = visitorContext.guessGameOn && visitorContext.hiddenMood
+      const correct = isGuessGame && activeMood === visitorContext.hiddenMood
+      const id = Math.random().toString(36).slice(2, 10)
       const entry: FeedEntry = {
-        id: Math.random().toString(36).slice(2, 10),
+        id,
         mood: activeMood,
         msg: msg.slice(0, 120),
         ts: Date.now(),
         seen: false,
+        guess: isGuessGame
+          ? { mood: activeMood, correct: !!correct }
+          : null,
+        random: false,
       }
       const list = storage.loadFeed(visitSlug)
       list.push(entry)
       storage.saveFeed(visitSlug, list)
-      setSent(true)
-      showToast('Mood delivered')
+
+      // update guess stats on owner side (still local — this works because
+      // owner & visitor often share a device in demo mode)
+      if (isGuessGame) {
+        const stats = storage.loadGuessStats(visitSlug)
+        stats.total += 1
+        if (correct) stats.correct += 1
+        storage.saveGuessStats(visitSlug, stats)
+      }
+
+      setFunnyLine(funnyResponse(activeMood, id))
+
+      if (isGuessGame && visitorContext.hiddenMood) {
+        setPendingGuess({ guess: activeMood, actual: visitorContext.hiddenMood })
+        // delay sent state until reveal closes
+      } else {
+        setSent(true)
+        showToast('Mood delivered')
+      }
     },
-    [activeMood, visitSlug, showToast],
+    [activeMood, visitSlug, visitorContext, showToast],
   )
 
+  /* ---- send mood back (owner) ---- */
+  const sendMoodBack = useCallback((entry: FeedEntry, mood: MoodKey) => {
+    const list = storage.loadFeed(owner.slug).map((f) =>
+      f.id === entry.id ? { ...f, reply: { mood, ts: Date.now() } } : f,
+    )
+    storage.saveFeed(owner.slug, list)
+    showToast(`↩ sent ${MOODS[mood].label.toLowerCase()} back`)
+  }, [owner.slug, showToast])
+
+  /* ---- update owner ---- */
   const updateOwner = useCallback((next: Owner) => {
     setOwner(next)
     storage.saveOwner(next)
   }, [])
 
+  /* ---- watch for new achievements ---- */
+  useEffect(() => {
+    if (isVisitor) return
+    const tick = () => {
+      const feed = storage.loadFeed(owner.slug)
+      const guessStats = storage.loadGuessStats(owner.slug)
+      const ids = unlockedIds({ feed, guesses: guessStats, daysActive: activeDaysFromFeed(feed) })
+      const set = new Set(ids)
+      const prev = previousUnlocksRef.current
+      const newOnes = ids.filter((id) => !prev.has(id))
+      if (newOnes.length > 0) {
+        const def = ACHIEVEMENTS.find((a) => a.id === newOnes[0])
+        if (def) {
+          setUnlockedToast(def)
+          window.setTimeout(() => setUnlockedToast(null), 4500)
+        }
+        // persist all unlocks
+        updateOwner({ ...owner, unlocks: ids })
+      }
+      previousUnlocksRef.current = set
+    }
+    tick()
+    const id = window.setInterval(tick, 4000)
+    return () => window.clearInterval(id)
+  }, [isVisitor, owner, updateOwner])
+
   const goToOwnHome = () => {
     const u = new URL(window.location.href)
     u.searchParams.delete('m')
     window.location.href = u.toString()
+  }
+
+  const onGuessRevealDone = () => {
+    setPendingGuess(null)
+    setSent(true)
+    showToast('Mood delivered')
   }
 
   return (
@@ -137,27 +237,38 @@ export default function App() {
           onBrandClick={() => { if (isVisitor) goToOwnHome() }}
         />
 
+        <AnimatePresence>
+          {challengeVisible && (
+            <ChallengeBanner challenge={todaysChallenge} onDismiss={dismissChallenge} />
+          )}
+        </AnimatePresence>
+
         <main className="flex flex-1 flex-col items-center justify-center text-center min-h-0 py-4">
           <Hero
             isVisitor={isVisitor}
             visitorSlug={visitSlug}
             mood={currentMood}
-            visitorPrompt={visitorPrompt}
+            visitorPrompt={visitorContext.prompt}
+            guessGameOn={visitorContext.guessGameOn}
           />
 
           <AnimatePresence mode="wait">
-            {!sent && (
-              <MoodSelector
-                key="selector"
-                activeMood={activeMood}
-                onSelect={handleMoodSelect}
-              />
+            {!sent && !pendingGuess && (
+              <MoodSelector key="selector" activeMood={activeMood} onSelect={handleMoodSelect} />
             )}
           </AnimatePresence>
 
+          {isVisitor && !sent && !pendingGuess && !activeMood && (
+            <RandomDrop onClick={handleRandomDrop} />
+          )}
+
           <AnimatePresence>
-            {isVisitor && activeMood && !sent && (
-              <Compose key="compose" onSend={submitMood} />
+            {isVisitor && activeMood && !sent && !pendingGuess && (
+              <Compose
+                key="compose"
+                onSend={submitMood}
+                guessGameOn={visitorContext.guessGameOn}
+              />
             )}
           </AnimatePresence>
 
@@ -165,7 +276,12 @@ export default function App() {
             {sent && (
               <SentCard
                 key="sent"
-                onAnother={() => { setSent(false); setActiveMood(null) }}
+                funnyLine={funnyLine}
+                onAnother={() => {
+                  setSent(false)
+                  setActiveMood(null)
+                  setFunnyLine(null)
+                }}
                 onCreateOwn={goToOwnHome}
               />
             )}
@@ -181,7 +297,20 @@ export default function App() {
         owner={owner}
         onUpdateOwner={updateOwner}
         onToast={showToast}
+        onSendBack={sendMoodBack}
       />
+
+      <AchievementToast achievement={unlockedToast} />
+
+      <AnimatePresence>
+        {pendingGuess && (
+          <GuessReveal
+            guess={pendingGuess.guess}
+            actual={pendingGuess.actual}
+            onDone={onGuessRevealDone}
+          />
+        )}
+      </AnimatePresence>
 
       <Toast message={toastMessage} />
     </>

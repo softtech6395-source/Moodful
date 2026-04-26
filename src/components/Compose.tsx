@@ -3,9 +3,10 @@ import { motion } from 'framer-motion'
 
 interface Props {
   onSend: (msg: string) => void
+  guessGameOn?: boolean
 }
 
-export default function Compose({ onSend }: Props) {
+export default function Compose({ onSend, guessGameOn }: Props) {
   const [msg, setMsg] = useState('')
   return (
     <motion.div
@@ -21,14 +22,9 @@ export default function Compose({ onSend }: Props) {
           value={msg}
           onChange={(e) => setMsg(e.target.value)}
           maxLength={120}
-          placeholder="add a few words (optional)"
+          placeholder={guessGameOn ? "anything you want them to read (optional)" : "add a few words (optional)"}
           className="glass flex-1 font-inter outline-none transition-all"
-          style={{
-            fontSize: 14,
-            padding: '13px 18px',
-            borderRadius: 14,
-            color: 'var(--fg)',
-          }}
+          style={{ fontSize: 14, padding: '13px 18px', borderRadius: 14, color: 'var(--fg)' }}
         />
         <button
           onClick={() => onSend(msg.trim())}
@@ -44,14 +40,16 @@ export default function Compose({ onSend }: Props) {
             boxShadow: '0 8px 28px rgba(0,0,0,0.22)',
           }}
         >
-          Send
+          {guessGameOn ? 'Lock in guess' : 'Send'}
         </button>
       </div>
       <div
         className="mt-2 font-inter"
         style={{ fontSize: 11, color: 'var(--fg-muted)', letterSpacing: '0.06em' }}
       >
-        stays anonymous · they'll see your mood right away
+        {guessGameOn
+          ? "anonymous · their secret is revealed once you lock in"
+          : "stays anonymous · they'll see your mood right away"}
       </div>
     </motion.div>
   )
