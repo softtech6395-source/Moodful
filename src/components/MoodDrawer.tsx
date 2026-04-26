@@ -53,7 +53,7 @@ export default function MoodDrawer({ open, onClose, owner, onUpdateOwner, onToas
       cnv,
       shareLink,
       {
-        width: 220,
+        width: 296,
         margin: 1,
         errorCorrectionLevel: 'M',
         color: { dark: '#0f1218', light: '#ffffff' },
@@ -224,28 +224,29 @@ export default function MoodDrawer({ open, onClose, owner, onUpdateOwner, onToas
               </div>
 
               <div
-                className="mt-3 flex items-center gap-4 sm:flex-row flex-col"
+                className="mt-3 flex flex-col items-center gap-3.5"
                 style={{
                   background: 'rgba(255,255,255,0.05)',
                   border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: 16,
-                  padding: 18,
+                  padding: 20,
                 }}
               >
                 <div
-                  className="flex-shrink-0 mx-auto sm:mx-0"
-                  style={{ background: '#fff', padding: 8, borderRadius: 10, lineHeight: 0 }}
+                  className="flex-shrink-0"
+                  style={{ background: '#fff', padding: 10, borderRadius: 12, lineHeight: 0, boxShadow: '0 8px 28px rgba(0,0,0,0.25)' }}
                 >
-                  <canvas ref={qrCanvasRef} style={{ display: 'block', width: 110, height: 110 }} />
+                  <canvas ref={qrCanvasRef} style={{ display: 'block', width: 148, height: 148 }} />
                 </div>
-                <div className="font-inter text-center sm:text-left" style={{ fontSize: 12, color: 'rgba(245,245,247,0.7)', lineHeight: 1.6 }}>
-                  <strong style={{ color: '#f5f5f7', fontWeight: 600 }}>Scan to share your mood page</strong>
-                  <br />
-                  Drop on Instagram, WhatsApp, a sticker, anywhere.
-                  <div className="flex gap-1.5 mt-2.5 justify-center sm:justify-start">
-                    <PillButton onClick={downloadQr}>Download QR</PillButton>
-                    <PillButton onClick={previewLink}>Preview</PillButton>
+                <div className="text-center font-inter" style={{ fontSize: 12, color: 'rgba(245,245,247,0.65)', lineHeight: 1.55 }}>
+                  <div style={{ color: '#f5f5f7', fontWeight: 600, fontSize: 13, marginBottom: 2 }}>
+                    Scan to share your mood page
                   </div>
+                  Instagram, WhatsApp, a sticker — anywhere.
+                </div>
+                <div className="flex gap-2 justify-center w-full">
+                  <PillButton onClick={downloadQr}>Download QR</PillButton>
+                  <PillButton onClick={previewLink}>Preview link</PillButton>
                 </div>
               </div>
 
